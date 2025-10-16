@@ -13,7 +13,7 @@ df_cnae_h <- read_excel("CNAE_2.3_compilado_hierarquia.xlsx") %>%
 df_cnae <- read_excel("CNAE_2.3_compilado_hierarquia.xlsx") 
 
 # 3. Carrega estrutura CNAE (2.0) x SCNT ----   
-df_cnae_scnt <- read_excel("Atividade -contas de divulgação x Cnae 2.0 - Resumo.xlsx", skip = 2) %>%
+df_cnae_scnt <- read_excel("CNAE_2.0_SCNT_atividades_divulg.xlsx", skip = 2) %>%
                 rename_with(~ stri_trans_general(.x, "Latin-ASCII")) %>%        # remove acentos
                 rename_with(tolower) %>%                                        # minúsculas
                 rename_with(~ gsub("[^a-z0-9]+", "_", .x)) %>%                  # caracteres especiais → "_"
@@ -33,10 +33,10 @@ df_cnae_scnt <- read_excel("Atividade -contas de divulgação x Cnae 2.0 - Resum
                 select(-secao_isic_rev_4_1) %>% 
                 relocate(starts_with("cnae"), .before = scnt_ativ)
 
-df_cnae_scnt %>% group_by(cnae) %>% summarise(scnt_distinct = n_distinct(scnt_ativ)) %>% arrange(desc(scnt_distinct))
+df_cnae_scnt %>% group_by(cnae) %>% summarise(scnt_distinct = n_distinct(scnt_ativ)) %>% arrange(desc(scnt_distinct)) %>% filter(scnt_distinct>1)
 
 # 4. Carrega estrutura CNAE (2.0) x ISIC/CIIU (4.0) ----
-df_cnae_isic <- read_excel("CNAE20_Correspondencia_Isic4xCnae20.xls", skip = 53) %>%
+df_cnae_isic <- read_excel("CNAE_2.0_isic4.xls", skip = 53) %>%
                  select(-4) %>% 
                  setNames(c("isic", 
                             "isic_descr", 
@@ -56,9 +56,10 @@ df_cnae_isic <- read_excel("CNAE20_Correspondencia_Isic4xCnae20.xls", skip = 53)
 df_cnae_isic %>% group_by(isic) %>% summarise(n_cnaes_distinct = n_distinct(cnae)) %>% arrange(desc(n_cnaes_distinct)) %>% head(10)
 
 # 5. Carrega estrutura CNAE (2.0) x Intensidade Tecnológica OCDE ----
-df_cnae_ocde_intensi_tec <- read_xlsx("CNAE_2.0_Correspondencia_OCDE_intensidade_tec.xlsx") %>% 
+df_cnae_ocde_intensi_tec <- read_xlsx("CNAE_2.0_OCDE_intensi_PD.xlsx") %>% 
                             rename(cnae = codigo_cnae20,
-                                   cnae_descr = divisao)
+                                   cnae_descr = divisao) %>% 
+                            mutate(cnae = as.character(cnae))
 
 # 6. Monta de/para com raíz nas CNAES ----
 df <- df_cnae_h %>% 
@@ -66,10 +67,12 @@ df <- df_cnae_h %>%
                 by = "cnae") %>% 
       left_join(df_cnae_isic %>% select(cnae, starts_with("isic")),
                 by = "cnae",
-                relationship = "many-to-many")
+                relationship = "many-to-many") %>% 
+      left_join(df_cnae_ocde_intensi_tec %>% select(cnae, intensidade),
+                by = "cnae")
 
 # 7. Grava xlsx da tabela de correspondencia ----
-write_xlsx(df_de_para, "depara_cnae_sctn_isic.xlsx")
+write_xlsx(df_de_para, "de_para_cnae_sctn_isic.xlsx")
 
 # 8. Extra ----
 ########################## CNAE NÃO hierarquizada! 
