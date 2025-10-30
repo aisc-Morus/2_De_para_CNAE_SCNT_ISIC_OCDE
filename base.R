@@ -60,11 +60,14 @@ df_cnae_ocde_intensi_tec <- read_xlsx("CNAE_2.0_OCDE_intensi_PD.xlsx") %>%
                             rename(cnae = codigo_cnae20,
                                    cnae_descr = divisao) %>% 
                             mutate(cnae = as.character(cnae))
+<<<<<<< HEAD
 
 # 6. Carrega estrutura CNAE (2.3) x Missões NIB ----
 
 df_cnae_nib <- read_xlsx("CNAE_2.3_NIB_HS.xlsx", trim_ws = TRUE)
 
+=======
+>>>>>>> 05cf5cc551d6aaa019c106fe95a88619682eecd1
 
 # 6. Monta de/para com raíz nas CNAES ----
 df <- df_cnae_h %>% 
