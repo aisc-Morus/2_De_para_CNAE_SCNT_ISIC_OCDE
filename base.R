@@ -1,19 +1,19 @@
 
 # 1. Carrega ambiente ----
 if (!require(pacman)) install.packages("pacman")
-pacman::p_load(tidyverse, stringi, readxl, writexl, purrr)
+pacman::p_load(tidyverse, stringi, readxl, writexl, purrr, sidrar)
 
-# 2. Carrega estrutura CNAE (2.3) ----
-df_cnae_h <- read_excel("CNAE_2.3_compilado_hierarquia.xlsx") %>%
+# 2. CNAE (2.3) ----
+df_cnae_v <- read_excel("input/CNAE_2.3_compilado_hierarquia.xlsx") %>%               # estrutura hierarquizada
              rename_with(tolower) %>% 
              mutate(cnae = str_remove_all(cnae, "[^0-9]"),
                     cnae_descr = str_to_sentence(descr_cnae)) %>%  
              select(cnae, cnae_descr)
 
-df_cnae <- read_excel("CNAE_2.3_compilado_hierarquia.xlsx") 
+df_cnae_h <- read_excel("input/CNAE_2.3_compilado.xlsx")                                # estrutura NÃO hierarquizada
 
-# 3. Carrega estrutura CNAE (2.0) x SCNT ----   
-df_cnae_scnt <- read_excel("CNAE_2.0_SCNT_atividades_divulg.xlsx", skip = 2) %>%
+# 3. CNAE (2.0) x SCNT ----   
+df_cnae_scnt <- read_excel("input/CNAE_2.0_SCNT_atividades_divulg.xlsx", skip = 2) %>%
                 rename_with(~ stri_trans_general(.x, "Latin-ASCII")) %>%        # remove acentos
                 rename_with(tolower) %>%                                        # minúsculas
                 rename_with(~ gsub("[^a-z0-9]+", "_", .x)) %>%                  # caracteres especiais → "_"
@@ -26,135 +26,101 @@ df_cnae_scnt <- read_excel("CNAE_2.0_SCNT_atividades_divulg.xlsx", skip = 2) %>%
                 separate_rows(cnae, sep = "\\s*\\+\\s*") %>%                    # separa por "+" e espacos
                 mutate(cnae = str_trim(cnae),                                   # remove espaços em brancos da string
                        scnt_ativ_obs  = if_else(cnae %in% c("85", "86", "87"), 
-                                      "Cnae está decomposta em mais de uma atividade do SCN segundo a unidade produtiva pública/privada", ""),
+                                                "Cnae está decomposta em mais de uma atividade do SCN segundo a unidade produtiva pública/privada", ""),
                        cnae_divisao   = if_else(nchar(cnae) == 2, substr(cnae, 1, 2), NA_character_),
                        cnae_grupo     = if_else(nchar(cnae) == 3, substr(cnae, 1, 3), NA_character_),
                        cnae_classe    = if_else(nchar(cnae) == 4, substr(cnae, 1, 4), NA_character_)) %>% 
                 select(-secao_isic_rev_4_1) %>% 
                 relocate(starts_with("cnae"), .before = scnt_ativ)
 
-df_cnae_scnt %>% group_by(cnae) %>% summarise(scnt_distinct = n_distinct(scnt_ativ)) %>% arrange(desc(scnt_distinct)) %>% filter(scnt_distinct>1)
-
-# 4. Carrega estrutura CNAE (2.0) x ISIC/CIIU (4.0) ----
-df_cnae_isic <- read_excel("CNAE_2.0_isic4.xls", skip = 53) %>%
-                 select(-4) %>% 
-                 setNames(c("isic", 
+# 4. CNAE (2.0) x ISIC (4.0) ----
+df_cnae_isic <- read_excel("input/CNAE_2.0_isic4.xls", skip = 53) %>%
+                select(-4) %>% 
+                setNames(c("isic", 
                             "isic_descr", 
                             "cnae", 
                             "cnae_descr", 
                             "isic_obs")) %>% 
-                 mutate(cnae           = str_remove_all(cnae, "[^0-9]"),                                # remove qualquer caractere que não seja número
-                        cnae_divisao   = if_else(nchar(cnae) >= 2, substr(cnae, 1, 2), NA_character_),
-                        cnae_grupo     = if_else(nchar(cnae) >= 3, substr(cnae, 1, 3), NA_character_),
-                        cnae_classe    = if_else(nchar(cnae) >= 4, substr(cnae, 1, 4), NA_character_),
-                        cnae_subclasse = if_else(nchar(cnae) >= 5, substr(cnae, 1, 5), NA_character_),
-                        cnae_descr     = str_to_sentence(cnae_descr),
-                        isic_descr     = str_to_sentence(isic_descr),
-                        isic_versao = "4.0") %>% 
-                 select(starts_with("cnae"), everything()) 
+                mutate(cnae           = str_remove_all(cnae, "[^0-9]"),                                # remove qualquer caractere que não seja número
+                       cnae_divisao   = if_else(nchar(cnae) >= 2, substr(cnae, 1, 2), NA_character_),
+                       cnae_grupo     = if_else(nchar(cnae) >= 3, substr(cnae, 1, 3), NA_character_),
+                       cnae_classe    = if_else(nchar(cnae) >= 4, substr(cnae, 1, 4), NA_character_),
+                       cnae_descr     = str_to_sentence(cnae_descr),
+                       isic_descr     = str_to_sentence(isic_descr),
+                        isic_divisao   = if_else(nchar(isic) >= 2, substr(isic, 1, 2), NA_character_),
+                        isic_grupo     = if_else(nchar(isic) >= 3, substr(isic, 1, 3), NA_character_),
+                        isic_classe    = if_else(nchar(isic) >= 4, substr(isic, 1, 4), NA_character_)) %>%
+                 mutate(across(everything(), ~na_if(., ""))) %>%
+                 filter(!str_detect(isic, "^[A-Z]$")) %>% 
+                 select(cnae, cnae_divisao, cnae_grupo, cnae_classe, cnae_descr, isic, isic_divisao, isic_grupo, isic_classe, isic_descr, isic_obs)
 
-df_cnae_isic %>% group_by(isic) %>% summarise(n_cnaes_distinct = n_distinct(cnae)) %>% arrange(desc(n_cnaes_distinct)) %>% head(10)
+# 5. NCM x ISIC ----
+df_isic_ncm <- read_csv2("input/NCM.csv", 
+                         locale = locale(encoding = "latin1")) %>%                   # usar latin1 ou UTF-8 para encode de strings em português
+               as_tibble() %>% 
+               rename_with(tolower) %>%
+               select(ncm = co_ncm,
+                      ncm_descr = no_ncm_por,
+                      isic = co_isic_classe)
 
-# 5. Carrega estrutura CNAE (2.0) x Intensidade Tecnológica OCDE ----
-df_cnae_ocde_intensi_tec <- read_xlsx("CNAE_2.0_OCDE_intensi_PD.xlsx") %>% 
-                            rename(cnae = codigo_cnae20,
-                                   cnae_descr = divisao) %>% 
-                            mutate(cnae = as.character(cnae))
-<<<<<<< HEAD
+# 6. CNAE (2.0) x Intensidade Tecnológica OCDE ----
+df_cnae_isic_ocde <- read_xlsx("input/CNAE_2.0_OCDE_intensi_PD.xlsx", 
+                                      col_types = c("text", "text")) %>%  
+                            left_join(df_cnae_isic %>% select(cnae, isic), by = "isic") %>% 
+                            add_count(isic, name = "n_cnae_por_isic") %>% 
+                            add_count(cnae, name = "n_isic_por_cnae") %>% 
+                            mutate(cardinalidade = case_when(n_cnae_por_isic == 1 & n_isic_por_cnae == 1 ~ "1:1",
+                                                             n_cnae_por_isic > 1  & n_isic_por_cnae == 1 ~ "1:n",
+                                                             n_cnae_por_isic == 1 & n_isic_por_cnae > 1 ~ "n:1",
+                                                             TRUE ~ "n:n")) %>% 
+                            mutate(status = if_else(cardinalidade == "1:1", 
+                                                    "típica", 
+                                                    "não típica")) %>% 
+                            arrange(cnae) 
 
-# 6. Carrega estrutura CNAE (2.3) x Missões NIB ----
+df_intesidade_ocde <- df_cnae_h %>% 
+                      filter(cnae_secao == "C") %>%  
+                      select(cnae_divisao, cnae_grupo, cnae_grupo_descr) %>% 
+                      distinct() %>% 
+                      left_join(df_cnae_isic_ocde %>% select(cnae, regra_tipica_grupo = ocde_class),
+                                join_by(cnae_grupo == cnae)) %>% 
+                      left_join(df_cnae_isic_ocde %>% filter(status == "típica") %>%  select(cnae, regra_tipica_divisao = ocde_class),
+                                join_by(cnae_divisao == cnae)) %>% 
+                      mutate(regra_atipica = case_when(cnae_grupo %in% c(151,152,153) ~ "Média Baixa",
+                                                       cnae_grupo == 154 ~ "Média",
+                                                       cnae_divisao == "16" ~ "Média Baixa",
+                                                       cnae_grupo %in% c(191,192) ~ "Média Baixa",
+                                                       cnae_grupo == 193 ~ "Média Alta",
+                                                       cnae_divisao == 20 ~ "Média Alta",
+                                                       cnae_divisao == 22 ~ "Média",
+                                                       TRUE ~ NA)) %>%
+                      mutate(ocde_class = coalesce(regra_tipica_grupo,
+                                                   regra_tipica_divisao,
+                                                   regra_atipica)) %>%  
+                      select(cnae_divisao, 
+                             cnae_grupo,
+                             cnae_grupo_descr,
+                             regra_tipica_grupo, 
+                             regra_tipica_divisao, 
+                             regra_atipica,
+                             ocde_class)
 
-df_cnae_nib <- read_xlsx("CNAE_2.3_NIB_HS.xlsx", trim_ws = TRUE)
+    
+# 7. CNAE (2.3) x Missões NIB ----
+df_cnae_nib <- read_xlsx("input/CNAE_2.3_NIB_HS.xlsx", trim_ws = TRUE)
 
-=======
->>>>>>> 05cf5cc551d6aaa019c106fe95a88619682eecd1
+# 7. De_para ----
+depara_v <- df_cnae_v %>% 
+                                left_join(df_cnae_scnt %>% select(cnae, starts_with("scnt")),
+                                          by = "cnae") %>% 
+                                left_join(df_cnae_isic %>% select(cnae, starts_with("isic")),
+                                          by = "cnae",
+                                          relationship = "many-to-many") 
 
-# 6. Monta de/para com raíz nas CNAES ----
-df <- df_cnae_h %>% 
-      left_join(df_cnae_scnt %>% select(cnae, starts_with("scnt")),
-                by = "cnae") %>% 
-      left_join(df_cnae_isic %>% select(cnae, starts_with("isic")),
-                by = "cnae",
-                relationship = "many-to-many") %>% 
-      left_join(df_cnae_ocde_intensi_tec %>% select(cnae, intensidade),
-                by = "cnae")
+depara_h <- df_cnae_h %>% 
+             left_join(df_intesidade_ocde %>% select(cnae_grupo, ocde_class),
+                       by = "cnae_grupo")
 
-# 7. Grava xlsx da tabela de correspondencia ----
-write_xlsx(df_de_para, "de_para_cnae_sctn_isic.xlsx")
-
-# 8. Extra ----
-########################## CNAE NÃO hierarquizada! 
-df_depara <- df_cnae %>% 
-  left_join(df_cnae_scnt %>% select(cnae_divisao, scnt_ativ, scnt_ativ_descr, scnt_ativ_obs),
-            by = "cnae_divisao",
-            relationship = "many-to-many") %>% 
-  left_join(df_cnae_scnt %>% select(cnae_grupo, scnt_ativ, scnt_ativ_descr, scnt_ativ_obs),
-            by = "cnae_grupo",
-            relationship = "many-to-many") %>%
-  mutate(cnae_classe_4 = substr(cnae_classe, 1, 4)) %>% 
-  left_join(df_cnae_scnt %>% select(cnae_classe, scnt_ativ, scnt_ativ_descr, scnt_ativ_obs),
-            join_by(cnae_classe_4 == cnae_classe),
-            relationship = "many-to-many") %>%
-  select(-cnae_classe_4) %>% 
-  mutate(scnt_ativ       = coalesce(scnt_ativ,
-                                    scnt_ativ.x,
-                                    scnt_ativ.y),
-         scnt_ativ_descr = coalesce(scnt_ativ_descr,
-                                    scnt_ativ_descr.x,
-                                    scnt_ativ_descr.y),
-         scnt_ativ_obs   = coalesce(scnt_ativ_obs,
-                                    scnt_ativ_obs.x,
-                                    scnt_ativ_obs.y)) %>%
-  left_join(df_cnae_isic %>% select(cnae_divisao, isic, isic_descr, isic_obs),
-            by = "cnae_divisao",
-            relationship = "many-to-many") %>% 
-  left_join(df_cnae_isic %>% select(cnae_grupo, isic, isic_descr, isic_obs),
-            by = "cnae_grupo",
-            relationship = "many-to-many") %>% 
-  left_join(df_cnae_isic %>% select(cnae_classe, isic, isic_descr, isic_obs),
-            by = "cnae_classe",
-            relationship = "many-to-many") %>% 
-  left_join(df_cnae_isic %>% select(cnae_subclasse, isic, isic_descr, isic_obs),
-            by = "cnae_subclasse",
-            relationship = "many-to-many") %>% 
-  mutate(isic       = coalesce(isic.x,
-                               isic.y,
-                               isic.x.x,
-                               isic.y.y),
-         isic_descr = coalesce(isic_descr.x,
-                               isic_descr.y,
-                               isic_descr.x.x,
-                               isic_descr.y.y) ,
-         isic_obs   = coalesce(isic_obs.x,
-                               isic_obs.y,
-                               isic_obs.x.x,
-                               isic_obs.y.y)) %>% 
-  select(-ends_with(c("x","y")))
-
-########################## Intensidade OCDE x CNAE
-df_intensidade <- tribble( ~intensidade,  ~codigo_cnae20, ~divisao,
-                           "Alta",         21,             "Farmoquímicos e Farmacêuticos",
-                           "Alta",         26,             "Equip. de Informát, Prod. Eletrônicos e Ópticos",
-                           "Alta",         28,             "Máquinas e Equipamentos",
-                           "Média Alta",   27,             "Máquinas, Aparelhos e Materiais Elétricos",
-                           "Média Alta",   20,             "Químico",
-                           "Média Alta",   29,             "Veículos Automotores, Reboques e Carrocerias",
-                           "Média Alta",   30,             "Outros equipamentos de Transporte", 
-                           "Média Baixa",  25,             "Produtos de Metal, Exceto Máquinas e Equip.",
-                           "Média Baixa",  19,             "Coque, Derivados do petróleo e Biocombustíveis",
-                           "Média Baixa",  22,             "Produtos de Borracha e Material Plástico",
-                           "Média Baixa",  23,             "Produtos de Minerais Não-Metálicos",
-                           "Média Baixa",  24,             "Metalurgia",
-                           "Baixa",        18,             "Impressão e Reprod. de Gravações",
-                           "Baixa",        33,             "Manut., Rep. e Instal. de Máquinas e Equip.",
-                           "Baixa",        11,             "Bebidas",
-                           "Baixa",        12,             "Fumo",
-                           "Baixa",        13,             "Têxteis",
-                           "Baixa",        14,             "Vestuário e Acessórios",
-                           "Baixa",        15,             "Couros e Artefatos, Art Viagem e Calçados",
-                           "Baixa",        16,             "Produtos de Madeira",
-                           "Baixa",        17,             "Celulose, Papel e Prod. de Papel",
-                           "Baixa",        10,             "Alimentícios",
-                           "Baixa",        31,             "Móveis",
-                           "Baixa",        32,             "Produtos diversos")
-
+## 7.1 .xlsx ----
+write_xlsx(depara_v, "output/depara_v_cnae_sctn_isic.xlsx")
+write_xlsx(depara_h, "output/depara_h_cnae_ocde.xlsx")
