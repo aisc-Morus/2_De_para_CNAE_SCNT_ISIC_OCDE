@@ -78,49 +78,50 @@ df_cnae_isic_ocde <- read_xlsx("input/CNAE_2.0_OCDE_intensi_PD.xlsx",
                                                     "não típica")) %>% 
                             arrange(cnae) 
 
-df_intesidade_ocde <- df_cnae_h %>% 
-                      filter(cnae_secao == "C") %>%  
-                      select(cnae_divisao, cnae_grupo, cnae_grupo_descr) %>% 
-                      distinct() %>% 
-                      left_join(df_cnae_isic_ocde %>% select(cnae, regra_tipica_grupo = ocde_class),
-                                join_by(cnae_grupo == cnae)) %>% 
-                      left_join(df_cnae_isic_ocde %>% filter(status == "típica") %>%  select(cnae, regra_tipica_divisao = ocde_class),
-                                join_by(cnae_divisao == cnae)) %>% 
-                      mutate(regra_atipica = case_when(cnae_grupo %in% c(151,152,153) ~ "Média Baixa",
-                                                       cnae_grupo == 154 ~ "Média",
-                                                       cnae_divisao == "16" ~ "Média Baixa",
-                                                       cnae_grupo %in% c(191,192) ~ "Média Baixa",
-                                                       cnae_grupo == 193 ~ "Média Alta",
-                                                       cnae_divisao == 20 ~ "Média Alta",
-                                                       cnae_divisao == 22 ~ "Média",
-                                                       TRUE ~ NA)) %>%
-                      mutate(ocde_class = coalesce(regra_tipica_grupo,
-                                                   regra_tipica_divisao,
-                                                   regra_atipica)) %>%  
-                      select(cnae_divisao, 
-                             cnae_grupo,
-                             cnae_grupo_descr,
-                             regra_tipica_grupo, 
-                             regra_tipica_divisao, 
-                             regra_atipica,
-                             ocde_class)
+df_intensidade_ocde <- df_cnae_h %>% 
+                       filter(cnae_secao == "C") %>%  
+                       select(cnae_divisao, cnae_grupo, cnae_grupo_descr) %>% 
+                       distinct() %>% 
+                       left_join(df_cnae_isic_ocde %>% select(cnae, regra_tipica_grupo = ocde_class),
+                                 join_by(cnae_grupo == cnae)) %>% 
+                       left_join(df_cnae_isic_ocde %>% filter(status == "típica") %>%  select(cnae, regra_tipica_divisao = ocde_class),
+                                 join_by(cnae_divisao == cnae)) %>% 
+                       mutate(regra_atipica = case_when(cnae_grupo %in% c(151,152,153) ~ "Média Baixa",
+                                                        cnae_grupo == 154 ~ "Média",
+                                                        cnae_divisao == "16" ~ "Média Baixa",
+                                                        cnae_grupo %in% c(191,192) ~ "Média Baixa",
+                                                        cnae_grupo == 193 ~ "Média Alta",
+                                                        cnae_divisao == 20 ~ "Média Alta",
+                                                        cnae_divisao == 22 ~ "Média",
+                                                        TRUE ~ NA)) %>%
+                       mutate(ocde_class = coalesce(regra_tipica_grupo,
+                                                    regra_tipica_divisao,
+                                                    regra_atipica)) %>%  
+                       select(cnae_divisao, 
+                              cnae_grupo,
+                              cnae_grupo_descr,
+                              regra_tipica_grupo, 
+                              regra_tipica_divisao, 
+                              regra_atipica,
+                              ocde_class)
 
     
 # 7. CNAE (2.3) x Missões NIB ----
 df_cnae_nib <- read_xlsx("input/CNAE_2.3_NIB_HS.xlsx", trim_ws = TRUE)
 
-# 7. De_para ----
+# 8. De_para ----
 depara_v <- df_cnae_v %>% 
-                                left_join(df_cnae_scnt %>% select(cnae, starts_with("scnt")),
-                                          by = "cnae") %>% 
-                                left_join(df_cnae_isic %>% select(cnae, starts_with("isic")),
-                                          by = "cnae",
-                                          relationship = "many-to-many") 
+            left_join(df_cnae_scnt %>% select(cnae, starts_with("scnt")),
+                      by = "cnae") %>% 
+            left_join(df_cnae_isic %>% select(cnae, starts_with("isic")),
+                      by = "cnae",
+                      relationship = "many-to-many") 
 
 depara_h <- df_cnae_h %>% 
              left_join(df_intesidade_ocde %>% select(cnae_grupo, ocde_class),
                        by = "cnae_grupo")
 
-## 7.1 .xlsx ----
+## 8.1 .xlsx ----
 write_xlsx(depara_v, "output/depara_v_cnae_sctn_isic.xlsx")
 write_xlsx(depara_h, "output/depara_h_cnae_ocde.xlsx")
+write_xlsx(df_intensidade_ocde, "output/regra_h_cnae_ocde.xlsx")
