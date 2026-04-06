@@ -5,13 +5,13 @@ pacman::p_load(tidyverse, stringi, readxl, writexl, purrr, sidrar)
 
 # 2. Processamento ----
 ## 2.1 CNAE (2.3) ----
-df_cnae_v <- read_excel("input/CNAE_2.3_compilado_hierarquia.xlsx") %>%               # estrutura hierarquizada
+df_cnae_v <- read_excel("input/CNAE_2.3_compilado_hierarquia.xlsx") %>%         # estrutura hierarquizada
              rename_with(tolower) %>% 
              mutate(cnae = str_remove_all(cnae, "[^0-9]"),
                     cnae_descr = str_to_sentence(descr_cnae)) %>%  
              select(cnae, cnae_descr)
 
-df_cnae_h <- read_excel("input/CNAE_2.3_compilado.xlsx")                                # estrutura NÃO hierarquizada
+df_cnae_h <- read_excel("input/CNAE_2.3_compilado.xlsx")                        # estrutura NÃO hierarquizada
 
 ## 2.2 CNAE (2.0) x SCNT ----   
 df_cnae_scnt <- read_excel("input/CNAE_2.0_SCNT_atividades_divulg.xlsx", skip = 2) %>%
@@ -57,19 +57,59 @@ df_cnae_isic <- read_excel("input/CNAE_2.0_isic4.xls", skip = 53) %>%
 
 ## 2.4 NCM x ISIC ----
 df_isic_ncm <- read_csv2("input/NCM.csv", 
-                         locale = locale(encoding = "latin1")) %>%                   # usar latin1 ou UTF-8 para encode de strings em português
+                         locale = locale(encoding = "latin1")) %>%             # usar latin1 ou UTF-8 para encode de strings em português
                as_tibble() %>% 
                rename_with(tolower) %>%
                select(ncm = co_ncm,
                       ncm_descr = no_ncm_por,
                       isic = co_isic_classe)
 
-## 2.5 CNAE (2.0) x Intensidade Tecnológica OCDE ----
+## 2.5 CNAE (2.3) - Alias IED ----
+df_cnae_alias_ied <- df_cnae_h %>% 
+                     filter(cnae_secao == "C") %>%  
+                     select(cnae_divisao, cnae_grupo, cnae_grupo_descr) %>% 
+                     distinct() %>% 
+                     mutate(alias_1 = case_when(
+                       # Alta
+                      cnae_divisao %in% c("21") ~ "Indústria farmacêutica",
+                      cnae_divisao %in% c("26") ~ "Complexo eletrônico",
+                      cnae_grupo %in% c("304")  ~ "Fabricação de aeronaves",
+                       # Média Alta
+                      cnae_divisao %in% c("29")              ~ "Fab. veícs. automotores, reboqs. e carrocerias",
+                      cnae_grupo %in% c("325")               ~ "Fab. I&M uso médico e odontolog., arts. óticos",
+                      cnae_divisao %in% c("28")              ~ "Fab. M&E",
+                      cnae_divisao %in% c("20")              ~ "Fab. de químicos (exc. farmacêuticos)",
+                      cnae_grupo %in% c("304")               ~ "Fab. de químicos (exc. farmacêuticos)",
+                      cnae_divisao %in% c("27")              ~ "Fab. máqs., apars. e maters. elétricos",
+                      cnae_grupo %in% c("255")               ~ "Fab. equip. bélicos pesados, armas e munição",
+                      cnae_grupo %in% c("303", "305", "309") ~ "Fab. de veícs. ferrov., militares e não espec.",
+                       # Média                                               
+                      cnae_divisao %in% c("22")                            ~ "Fab. prods. borracha e mat. plástico",
+                      cnae_grupo %in% c("321", "322", "323", "324", "329") ~ "Fab. bens diversos (exc. I&M)",
+                      cnae_divisao %in% c("23")                            ~ "Fab. prods. minerais não-metáls.",
+                      cnae_divisao %in% c("24")                            ~ "Metalurgia",
+                      cnae_grupo %in% c("301")                             ~ "Fab. de embarcações",  
+                      cnae_divisao %in% c("33")                            ~ "Manutenç., reparaç., intalaç. de M&E",
+                      # Média Baixa
+                      cnae_divisao %in% c("13", "14", "15")                ~ "Fab. têxteis, arts. vestuário, couro e calçados",
+                      cnae_divisao %in% c("16","17", "18", "31")           ~ "Fab. prods. madeira, móveis, papel, celulose, impress.",
+                      cnae_divisao %in% c("10", "11", "12")                ~ "Fab. bens alimentícios, bebida e fumo",
+                      cnae_grupo %in% c("251", "252", "253", "254", "259") ~ "Fab. prods. de metal",
+                      cnae_divisao %in% c("19")                            ~ "Fab. coque, prods, derivs. petróleo e biocombs.",
+                      cnae_divisao %in% c("5", "6", "7", "8", "9")         ~ "Indústria Extrativista"),
+                      
+                      alias_2 = case_when(
+                        cnae_grupo %in% c("262", "263")               ~ "Material de escritório e informática",
+                        cnae_grupo %in% c("264")                      ~ "Equipamento de rádio, tv e comunicação",
+                        cnae_grupo %in% c("265", "266", "267", "268") ~ "Instrumentos médicos, de ótica e precisão"))
+
+## 2.6 CNAE (2.0) x Intensidade Tecnológica OCDE ----
 df_cnae_isic_ocde <- read_xlsx("input/CNAE_2.0_OCDE_intensi_PD.xlsx", 
                                col_types = c("text", "text")) %>%  
-                     left_join(df_cnae_isic %>% select(cnae, isic), by = "isic") %>% 
+                     left_join(df_cnae_isic %>% select(cnae, isic), 
+                               by = "isic") %>%
+                     add_count(cnae, name = "n_isic_por_cnae") %>%
                      add_count(isic, name = "n_cnae_por_isic") %>% 
-                     add_count(cnae, name = "n_isic_por_cnae") %>% 
                      mutate(cardinalidade = case_when(n_cnae_por_isic == 1 & n_isic_por_cnae == 1 ~ "1:1",
                                                       n_cnae_por_isic > 1  & n_isic_por_cnae == 1 ~ "1:n",
                                                       n_cnae_por_isic == 1 & n_isic_por_cnae > 1 ~ "n:1",
@@ -77,16 +117,19 @@ df_cnae_isic_ocde <- read_xlsx("input/CNAE_2.0_OCDE_intensi_PD.xlsx",
                      mutate(status = if_else(cardinalidade == "1:1", 
                                              "típica", 
                                              "não típica")) %>% 
-                     arrange(cnae) 
+                     arrange(isic) 
 
 df_cnae_ocde <- df_cnae_h %>% 
                 filter(cnae_secao == "C") %>%  
                 select(cnae_divisao, cnae_grupo, cnae_grupo_descr) %>% 
                 distinct() %>% 
+                # regra 1: típica por cnae_grupo
                 left_join(df_cnae_isic_ocde %>% select(cnae, regra_tipica_grupo = ocde_class),
                           join_by(cnae_grupo == cnae)) %>% 
+                # regra 2: típica por cnae_divisão
                 left_join(df_cnae_isic_ocde %>% filter(status == "típica") %>%  select(cnae, regra_tipica_divisao = ocde_class),
                           join_by(cnae_divisao == cnae)) %>% 
+                # regra 3: atípica por inputação 
                 mutate(regra_atipica = case_when(cnae_grupo %in% c(151,152,153) ~ "Média Baixa",
                                                  cnae_grupo == 154 ~ "Média",
                                                  cnae_divisao == "16" ~ "Média Baixa",
@@ -95,6 +138,7 @@ df_cnae_ocde <- df_cnae_h %>%
                                                  cnae_divisao == 20 ~ "Média Alta",
                                                  cnae_divisao == 22 ~ "Média",
                                                  TRUE ~ NA)) %>%
+                # classificação resultante 
                 mutate(ocde_class = coalesce(regra_tipica_grupo,
                                              regra_tipica_divisao,
                                              regra_atipica)) %>%  
@@ -104,36 +148,11 @@ df_cnae_ocde <- df_cnae_h %>%
                        regra_tipica_grupo, 
                        regra_tipica_divisao, 
                        regra_atipica,
-                       ocde_class)
+                       ocde_class) %>% 
+                 left_join(df_cnae_alias_ied %>% select(cnae_grupo, alias_1, alias_2))
 
-    
-## 2.6 CNAE (2.3) x Missões NIB ----
+## 2.7 CNAE (2.3) x Missões NIB ----
 df_cnae_nib <- read_xlsx("input/CNAE_2.3_NIB_HS.xlsx", trim_ws = TRUE)
-
-## 2.7 CNAE (2.3) - Alias IED ----
-df_cnae_alias_ied <- df_cnae_h %>% 
-                     filter(cnae_secao == "C") %>%  
-                     select(cnae_divisao, cnae_grupo, cnae_grupo_descr) %>% 
-                     distinct() %>% 
-                     mutate(alias_1 = case_when(cnae_divisao %in% c("21")                     ~ "Indústria farmacêutica",
-                                                cnae_divisao %in% c("26")                     ~ "Complexo eletrônico",
-                                                cnae_grupo %in% c("304")                      ~ "Fabricação de aeronaves",
-                                                
-                                                cnae_divisao %in% c("29")                     ~ "Fab. veícs. automotores, reboqs. e carrocerias",
-                                                cnae_grupo %in% c("325")                      ~ "Fab. I&M uso médico e odontolog., arts. óticos",
-                                                cnae_divisao %in% c("28")                     ~ "Fab. M&E",
-                                                cnae_divisao %in% c("20")                     ~ "Fab. de químicos (exc. farmacêuticos)",
-                                                cnae_grupo %in% c("304")                      ~ "Fab. de químicos (exc. farmacêuticos)",
-                                                cnae_divisao %in% c("27")                     ~ "Fab. máqs., apars. e maters. elétricos",
-                                                cnae_grupo %in% c("255")                      ~ "Fab. equip. bélicos pesados, armas e munição",
-                                                cnae_grupo %in% c("303", "305", "309")        ~ "Fab. de veícs. ferrov., militares e não espec."
-                                                
-# parei na Média!                                                
-                                                
-                                                ),
-                            alias_2 = case_when(cnae_grupo %in% c("262", "263")               ~ "Material de escritório e informática",
-                                                cnae_grupo %in% c("264")                      ~ "Equipamento de rádio, tv e comunicação",
-                                                cnae_grupo %in% c("265", "266", "267", "268") ~ "Instrumentos médicos, de ótica e precisão"))
 
 
 # 3. De_para ----
